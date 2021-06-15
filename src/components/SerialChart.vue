@@ -94,6 +94,17 @@ export default {
     //   // console.log(array)
     //   this.addDataArray(array)
     // }, 100)
+
+    // navigator.serial.addEventListener('connect', (event) => {
+    //   console.log(event)
+    //   this.$message.success("连接成功")
+    // })
+
+    navigator.serial.addEventListener('disconnect', (event) => {
+      console.log(event)
+      this.closeSerial()
+      this.$message.error("连接断开")
+    })
   },
   methods: {
     initChart() {
@@ -198,16 +209,6 @@ export default {
         console.log(this.serialPort)
         await this.serialPort.open({baudRate: this.serialBaudRate})
 
-        // navigator.serial.addEventListener('connect', (event) => {
-        //   console.log(event)
-        //   this.$message.success("连接成功")
-        // })
-
-        navigator.serial.addEventListener('disconnect', (event) => {
-          console.log(event)
-          this.$message.error("连接断开")
-        })
-
         this.serialIsConn = true
 
         let lineBuffer = ''
@@ -244,6 +245,7 @@ export default {
             this.serialPortReader = null
           } catch (e) {
             console.error(e)
+            this.serialIsConn = false
           }
         }
       } catch (e) {
