@@ -13,11 +13,12 @@
         </el-select>
       </el-col>
       <el-col :span="8">
-        <el-button @click="openSerial" :disabled="serialBaudRate == ''" style="width: 100%; height: 100%;">连接串口
+        <el-button @click="doSerial" :disabled="serialBaudRate === ''"
+                   style="width: 100%; height: 100%;">{{ serialIsConn ? '断开串口' : '连接串口' }}
         </el-button>
       </el-col>
       <el-col :span="8">
-        <el-button @click="cleanChart" :disabled="serialIsConn" style="width: 100%; height: 100%;">清空记录</el-button>
+        <el-button @click="cleanChart" style="width: 100%; height: 100%;">清空记录</el-button>
       </el-col>
     </el-row>
     <!--    <el-row>-->
@@ -68,6 +69,9 @@ export default {
         label: '921600'
       }],
       serialBaudRate: '',
+      serialIsConn: false,
+      serialPort: null,
+      serialPortReader: null,
       serialChart: null,
       serialChartConfig: {
         type: 'line',
@@ -76,22 +80,20 @@ export default {
           datasets: [{}],
         }
       },
-      serialIsConn: false,
       count: 0,
     }
   },
   mounted() {
     this.initChart()
-    setInterval(() => {
-      let array = []
-      array.push(this.rand(0,100))
-      array.push(this.rand(0,100))
-      array.push(this.rand(0,100))
-      array.push(this.rand(0,100))
-      // console.log(array)
-      this.addDataArray(array)
-    }, 100)
-    // console.error(this.serialChart)
+    // setInterval(() => {
+    //   let array = []
+    //   array.push(this.rand(0,100))
+    //   array.push(this.rand(0,100))
+    //   array.push(this.rand(0,100))
+    //   array.push(this.rand(0,100))
+    //   // console.log(array)
+    //   this.addDataArray(array)
+    // }, 100)
   },
   methods: {
     initChart() {
@@ -139,7 +141,11 @@ export default {
     // 清除表格
     cleanChart() {
       this.count = 0
+      this.serialChartConfig.data.labels = []
       this.serialChart.data.datasets = []
+      for (let i = 0; i < this.showNum; ++i) {
+        this.serialChartConfig.data.labels.push(i)
+      }
       this.serialChart.update()
     },
     // 根据数据长度，修改
@@ -179,14 +185,92 @@ export default {
     /**
      * serial
      */
+    doSerial() {
+      if (this.serialIsConn) {
+        this.closeSerial()
+      } else {
+        this.openSerial()
+      }
+    },
     async openSerial() {
       try {
-        let port = await navigator.serial.requestPort({})
-        await port.open({baudrate: this.serialBaudOptions})
+        this.serialPort = await navigator.serial.requestPort({})
+        console.log(this.serialPort)
+        await this.serialPort.open({baudRate: this.serialBaudRate})
+
+        // navigator.serial.addEventListener('connect', (event) => {
+        //   console.log(event)
+        //   this.$message.success("连接成功")
+        // })
+
+        navigator.serial.addEventListener('disconnect', (event) => {
+          console.log(event)
+          this.$message.error("连接断开")
+        })
+
+        this.serialIsConn = true
+
+        let lineBuffer = ''
+        this.serialPortReader = this.serialPort.readable.getReader()
+        let decoder = new TextDecoder()
+
+        while (this.serialPort && this.serialPort.readable) {
+          try {
+            for (; ;) {
+              const {value, done} = await this.serialPortReader.read()
+              if (value) {
+                let str = decoder.decode(value)
+                // console.log(str)
+                lineBuffer += str
+                let lines = lineBuffer.split('\n')
+                if (lines.length > 1) {
+                  // console.error(lineBuffer)
+                  let arrayStr = lineBuffer.split(",")
+                  // console.log(arrayStr)
+                  let data = arrayStr.map(item => {
+                    return Number(item)
+                  })
+                  // console.error(data)
+                  this.addDataArray(data)
+                  lineBuffer = ""
+                }
+              }
+              if (done) {
+                console.error(done)
+                break
+              }
+            }
+            this.serialPortReader.releaseLock()
+            this.serialPortReader = null
+          } catch (e) {
+            console.error(e)
+          }
+        }
       } catch (e) {
         console.error(e)
+        this.serialIsConn = false
         this.$message.warning("连接失败")
       }
+    },
+    async closeSerial() {
+      const localPort = this.serialPort
+      this.serialPort = null
+
+      if (this.serialPortReader) {
+        await this.serialPortReader.cancel()
+      }
+
+      if (localPort) {
+        try {
+          await localPort.close()
+        } catch (e) {
+          console.error(e)
+        }
+      }
+
+      this.serialPortReader = null
+      this.serialPort = null
+      this.serialIsConn = false
     },
     /**
      * utils
@@ -198,21 +282,21 @@ export default {
       let alpha = opacity === undefined ? 0.5 : 1 - opacity
       return colorLib(value).alpha(alpha).rgbString()
     },
-    numbers(config) {
-      let cfg = config || {}
-      let min = valueOrDefault(cfg.min, 0)
-      let max = valueOrDefault(cfg.max, 100)
-      let count = valueOrDefault(cfg.count, 8)
-      let data = []
-      let i
-      for (i = 0; i < count; ++i) {
-        data.push(this.rand(min, max))
-      }
-      return data
-    },
-    rand(min, max) {
-      return Math.floor(Math.random() * (max - min + 1)) + min
-    }
+    // numbers(config) {
+    //   let cfg = config || {}
+    //   let min = valueOrDefault(cfg.min, 0)
+    //   let max = valueOrDefault(cfg.max, 100)
+    //   let count = valueOrDefault(cfg.count, 8)
+    //   let data = []
+    //   let i
+    //   for (i = 0; i < count; ++i) {
+    //     data.push(this.rand(min, max))
+    //   }
+    //   return data
+    // },
+    // rand(min, max) {
+    //   return Math.floor(Math.random() * (max - min + 1)) + min
+    // }
   }
 }
 </script>
